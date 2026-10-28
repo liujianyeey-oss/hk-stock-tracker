@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hk-stock-tracker"
+version = "0.1.0"
+description = "Hong Kong stock market structure research and observation tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+hk-tracker = "hk_stock_tracker.cli:main"
+
+[tool.setuptools]
+packages = ["hk_stock_tracker"]
+

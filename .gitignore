@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+logs/
+.DS_Store
+.mt-write-*
+**/.tracker.lock
+**/.daily-transaction.json

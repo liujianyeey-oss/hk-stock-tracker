@@ -1,0 +1,41 @@
+{
+  "updated": "2026-10-23",
+  "note": "美团-W(hk03690) 战略地图：关键价位 + 规则引擎 playbook。结构变化后由后续分析更新。",
+  "resistance": [
+    {"price": 72.3, "note": "最近套牢峰(6.9%)"},
+    {"price": 78.3, "note": "主峰(13.0%)"},
+    {"price": 83.8, "note": "套牢峰(8.6%)"},
+    {"price": 86.3, "note": "套牢峰(9.2%)"},
+    {"price": 92.3, "note": "套牢峰(6.0%)"}
+  ],
+  "support": [
+    {"price": 70.5, "note": "薄支撑"},
+    {"price": 67.5, "note": "66-69次级带中枢"},
+    {"price": 63.65, "note": "52周低"},
+    {"price": 62.5, "note": "60-65历史铁底中枢"}
+  ],
+  "thresholds": {"vol_active": 0.8, "spike_x": 2.0, "lull_x": 0.5},
+  "playbook": [
+    {"id": "ls_fail", "group": "left_side", "when": {"close_below": 58},
+     "stance": "左侧证伪：有效跌破58，逻辑证伪离场"},
+    {"id": "rs_fail", "group": "right_side", "when": {"close_below": 70.0, "turnover_above": 0.8},
+     "stance": "突破证伪：放量跌回70下方，右侧试多离场"},
+    {"id": "range_off_dn", "group": "range", "when": {"close_below": 66, "turnover_above": 0.8},
+     "stance": "放量破66：箱体策略停用，防下行加速"},
+    {"id": "range_off_up", "group": "range", "when": {"close_above": 78, "turnover_above": 0.8},
+     "stance": "放量上破78：箱体策略停用，转右侧"},
+    {"id": "rs_confirm", "action": "entry", "group": "right_side", "when": {"close_above": 78.3},
+     "stance": "右侧：收盘高于78.3主峰，单日价格条件触发"},
+    {"id": "rs_test", "action": "entry", "group": "right_side", "when": {"close_above": 72.3, "turnover_above": 0.8},
+     "stance": "右侧：放量收盘高于72.3，单日价格条件触发"},
+    {"id": "ls_batch2", "action": "entry", "group": "left_side", "when": {"close_between": [60, 65]},
+     "stance": "左侧：60-65历史铁底区，补第二批"},
+    {"id": "ls_batch1", "action": "entry", "group": "left_side", "when": {"close_between": [66, 69]},
+     "stance": "左侧：66-69次级带，建第一批(1/3~1/2计划仓位)"},
+    {"id": "range_hi", "group": "range", "when": {"close_between": [77, 78]},
+     "stance": "箱体上沿77-78：高抛减仓"},
+    {"id": "range_lo", "action": "entry", "group": "range", "when": {"close_between": [67, 69]},
+     "stance": "箱体下沿67-69：低吸接回"}
+  ],
+  "default_stance": "无规则触发：现价处于关键位之间/箱体中部，观望为主，等低位充分换手或右侧信号。"
+}

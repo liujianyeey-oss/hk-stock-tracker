@@ -1,0 +1,54 @@
+{
+  "updated": "2026-10-28",
+  "code": "00700",
+  "name": "腾讯控股",
+  "auto_generated": true,
+  "benchmark": "hkHSI",
+  "chip_bin_width": 2,
+  "intraday_bin_width": 1.0,
+  "note": "自动生成草稿：关键位来自筹码峰与52周结构，未人工校准，不作为交易触发。",
+  "resistance": [
+    {
+      "price": 425.0,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 439.0,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 461.0,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 491.0,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 505.0,
+      "note": "自动筹码/价格峰草稿"
+    }
+  ],
+  "support": [
+    {
+      "price": 378.0,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 356.59,
+      "note": "自动筹码/价格谷草稿"
+    }
+  ],
+  "thresholds": {
+    "vol_active": 0.8,
+    "spike_x": 2.0,
+    "lull_x": 0.5
+  },
+  "playbook": [],
+  "default_stance": "自动草稿：关键位未人工校准，仅观察，不给交易建议。",
+  "reference": {
+    "w52_low": 378.0,
+    "w52_high": 658.7,
+    "avg_cost": 461.5582861471288
+  }
+}
