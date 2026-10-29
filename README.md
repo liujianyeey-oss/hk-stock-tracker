@@ -168,10 +168,11 @@ python3 -m hk_stock_tracker.sensitivity --snapshot /tmp/hk-snapshot.json --code 
 
 项目内的 [hk-stock-tracker Skill](skills/hk-stock-tracker/SKILL.md) 提供命令调用与解读约定。将它安装到你的 Agent 支持的技能目录后，助手可以根据请求调用项目脚本。
 
-Skill 默认从 `~/meituan-tracker` 查找项目；如果项目位于其他位置，在运行 Agent 的环境中设置：
+Skill 默认从 `~/hk-stock-tracker` 查找项目；如果项目位于其他位置，在运行 Agent 的环境中设置：
 
 ```bash
-export MEITUAN_TRACKER_HOME="/你的项目路径/meituan-tracker"
+export HK_STOCK_TRACKER_HOME="/你的项目路径/hk-stock-tracker"
+# 原 MEITUAN_TRACKER_HOME 仍可使用，新变量优先。
 ```
 
 Skill 依赖本项目的 Python 脚本和数据配置，需要一并部署。不同 Agent 的技能安装方式以其自身文档为准。

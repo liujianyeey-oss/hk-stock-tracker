@@ -1,6 +1,6 @@
 ---
 name: hk-stock-tracker
-description: 港股筹码面跟踪工具，默认长期跟踪美团-W（3690.HK），也支持输入其他港股代码初始化与跟踪。基于腾讯行情接口的筹码分布模型（换手衰减法）+ 日内指标体系（VWAP/分时筹码/ORB/相对强弱），输出每日与盘中的关键位状态、异动事件和规则化交易建议。项目目录可通过 MEITUAN_TRACKER_HOME 指定。当用户提到 美团、3690、meituan、港股筹码、港股日内、某只港股分析/跟踪 时使用。
+description: 港股筹码面跟踪工具，默认长期跟踪美团-W（3690.HK），也支持输入其他港股代码初始化与跟踪。基于腾讯行情接口的筹码分布模型（换手衰减法）+ 日内指标体系（VWAP/分时筹码/ORB/相对强弱），输出每日与盘中的关键位状态、异动事件和规则化交易建议。项目目录可通过 HK_STOCK_TRACKER_HOME 指定（兼容 MEITUAN_TRACKER_HOME）。当用户提到 美团、3690、meituan、港股筹码、港股日内、某只港股分析/跟踪 时使用。
 metadata:
   clawdbot:
     emoji: "🛵"
@@ -10,22 +10,22 @@ metadata:
 
 ## 项目与命令
 
-项目默认位于 `~/meituan-tracker`，也可通过环境变量 `MEITUAN_TRACKER_HOME` 指定项目目录。使用纯标准库和系统 python3：
+项目默认位于 `~/hk-stock-tracker`，可通过 `HK_STOCK_TRACKER_HOME` 指定项目目录，兼容旧变量 `MEITUAN_TRACKER_HOME`，新变量优先。使用纯标准库和系统 python3：
 
 ```bash
 # 每日分析（收盘后）：拉数据→算筹码→事件检测→规则建议→落盘
-python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker.py" daily
+python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/tracker.py" daily
 
 # 日内分析（盘中）：VWAP/分时筹码/ORB/量能/相对强弱→日内操作立场
-python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker.py" intraday
+python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/tracker.py" intraday
 ```
 
 跟踪其他港股时，先用 init 生成该标的的关键位草稿，再跑日报/日内：
 
 ```bash
-python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker.py" init --code 0700
-python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker.py" daily --code 0700
-python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker.py" intraday --code 0700
+python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/tracker.py" init --code 0700
+python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/tracker.py" daily --code 0700
+python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/tracker.py" intraday --code 0700
 ```
 
 - `--code` 支持 `700`、`0700`、`00700`、`700.HK`，内部统一为 5 位港股代码。
@@ -74,7 +74,7 @@ python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/tracker
 
 2026-10-23 的历史回测存在数据可用时间和换手率填补问题，其统计结果保留在旧报告中作为历史记录，**不能再作为信号有效性或交易建议的依据**。需使用更新后的回测重新核验，报告也应说明数据时间、前复权与交易成本等限制。
 
-默认运行 `python3 "${MEITUAN_TRACKER_HOME:-$HOME/meituan-tracker}/hk_stock_tracker/backtest.py"`，使用港股时区的当天作为截止日期，盘中会排除今日未收盘 K 线；可用 `--end YYYY-MM-DD` 或 `--output PATH` 指定范围和输出。已有同名报告不会被覆盖；仅在明确需要覆盖时使用 `--overwrite`。回测以信号日收盘计算理论收益，未扣交易成本，不等同于可执行收益。南向和沽空数据保守后移一个交易日，但实际发布时间仍需核验。
+默认运行 `python3 "${HK_STOCK_TRACKER_HOME:-${MEITUAN_TRACKER_HOME:-$HOME/hk-stock-tracker}}/hk_stock_tracker/backtest.py"`，使用港股时区的当天作为截止日期，盘中会排除今日未收盘 K 线；可用 `--end YYYY-MM-DD` 或 `--output PATH` 指定范围和输出。已有同名报告不会被覆盖；仅在明确需要覆盖时使用 `--overwrite`。回测以信号日收盘计算理论收益，未扣交易成本，不等同于可执行收益。南向和沽空数据保守后移一个交易日，但实际发布时间仍需核验。
 
 盘中 `close_*` 条件不触发；换手估算时相关放量条件不触发。快照和日报先写恢复记录，再分别原子替换；中断后下一次同标的任务启动时尝试恢复，外部修改冲突时保留记录并停止。写入中不受锁约束的读者可能暂时看到不同步；此机制不保证断电后的所有文件系统行为。同一标的任务使用进程锁，冲突时新任务退出，不同标的可并行。
 
