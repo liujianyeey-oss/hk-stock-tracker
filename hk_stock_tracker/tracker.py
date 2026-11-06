@@ -699,6 +699,12 @@ def _daily(code):
 
     tk = tech_indicators(data)
 
+    try:
+        macro = macro_liquidity()
+    except Exception:
+        macro = None
+    ev_line = macro_event_line(load_macro_events(now.date()), now.date())
+
     lines = []
     A = lines.append
     A(f"# {quote['name']} ({tencent_symbol(code)}) 日报 {last['date']} [{status}]")
@@ -727,6 +733,13 @@ def _daily(code):
     A(f"- OBV 20日斜率{tk['obv_slope'] / 1e4:+.0f}万股/日 底背离:{'有(吸筹特征)' if tk['obv_div'] else '无'}"
       + (f" | 赔率 阻力{rr[0]:+.1f}%/支撑-{rr[1]:.1f}% 比值{rr[2]:.1f}{'[赔率不佳]' if rr[2] and rr[2] < 1 else ''}"
          if rr else ""))
+    A("## 宏观流动性" + (f"(评分{macro['score']:+d}/±2)" if macro else ""))
+    if macro:
+        A("- " + "  ".join(macro["items"]) + " | 联系汇率7.75-7.85,贴7.85=流出压力(美债10Y/HIBOR无源,见TODO)")
+    else:
+        A("- 宏观数据获取失败，本节跳过")
+    if ev_line:
+        A(f"- {ev_line}")
     A("## 关键位 阻力: " + " ".join(f"{lv['price']}({(lv['price'] - price) / price * 100:+.1f}%)"
                                     for lv in levels["resistance"])
       + " | 支撑: " + " ".join(f"{lv['price']}({(lv['price'] - price) / price * 100:+.1f}%)"
@@ -741,6 +754,10 @@ def _daily(code):
       + ("箱体playbook适用，趋势规则慎用" if tk["regime"] == "震荡市"
          else "趋势playbook适用，箱体高抛低吸慎用" if tk["regime"] == "趋势市"
          else "过渡市，箱体/趋势规则均减半仓执行"))
+    if macro and macro["score"] >= 2:
+        A("- 宏观流动性顺风(评分≥+2)")
+    elif macro and macro["score"] <= -2:
+        A("- 宏观流动性逆风(评分≤-2)，仓位口径降一档")
     for s in stances:
         A(f"- {s}")
     if levels.get("auto_generated"):
@@ -952,6 +969,107 @@ def fetch_southbound(code=DEFAULT_CODE):
         else:
             by[dt] = {"hold": h, "chg": c, "ratio": x.get("TOTAL_SHARES_RATIO") or 0}
     return [{"date": k, **v} for k, v in sorted(by.items(), reverse=True)]
+
+
+# TODO: 宏观流动性补充指标数据源暂缺——美债10年收益率(东财 secid 112.US10Y/112.US10YN/
+# 100.US10Y/101.US10Y 均 data=null, 2026-11-05 试)、HIBOR 1M(HKAB 页面 404+Nuxt JS 渲染)。
+# 待发现可用源后并入 macro_liquidity 评分(总分范围需相应调整)。
+
+
+def fetch_dxy_closes():
+    """东财美元指数日线收盘序列。现价口径 f43/100, 此处直接取日K。"""
+    beg = (datetime.date.today() - datetime.timedelta(days=70)).strftime("%Y%m%d")
+    url = ("https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.UDI"
+           f"&fields1=f1,f2,f3&fields2=f51,f53&klt=101&fqt=0&beg={beg}&end=20500101")
+    req = urllib.request.Request(url, headers={**UA, "Referer": "https://quote.eastmoney.com/"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        d = json.load(r)
+    return [float(k.split(",")[1]) for k in d["data"]["klines"]]
+
+
+def fetch_usdhkd_closes():
+    """腾讯 whUSDHKD 日线收盘序列(记录: 日期,开,收,高,低,...)。"""
+    today = datetime.date.today()
+    url = ("https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=whUSDHKD,day,"
+           f"{(today - datetime.timedelta(days=70)).isoformat()},{today.isoformat()},50")
+    d = json.loads(http_get(url))["data"]["whUSDHKD"]
+    return [float(k[2]) for k in (d.get("day") or d.get("qfqday") or [])]
+
+
+def macro_liquidity():
+    """DXY/USDHKD 20日方向评分: 变化>±0.3%记升降, 下降(弱美元/强港元)=宽松=+1。"""
+    def direction(closes):
+        if len(closes) < 21:
+            raise ValueError("历史不足21日")
+        pct = (closes[-1] / closes[-21] - 1) * 100
+        txt = "升" if pct > 0.3 else ("降" if pct < -0.3 else "平")
+        score = -1 if pct > 0.3 else (1 if pct < -0.3 else 0)
+        return txt, score, pct
+    out = {"items": [], "score": 0}
+    try:
+        c = fetch_dxy_closes()
+        t, s, p = direction(c)
+        out["items"].append(f"DXY {c[-1]:.2f}(20日{p:+.1f}%{t}{s:+d})")
+        out["score"] += s
+    except Exception:
+        out["items"].append("DXY获取失败")
+    try:
+        c = fetch_usdhkd_closes()
+        t, s, p = direction(c)
+        out["items"].append(f"USDHKD {c[-1]:.4f}(20日{p:+.2f}%{t}{s:+d})")
+        out["score"] += s
+    except Exception:
+        out["items"].append("USDHKD获取失败")
+    if not out["items"]:
+        raise ValueError("宏观指标全部获取失败")
+    return out
+
+
+def load_macro_events(today):
+    """静态事件(FOMC/财报)读 data/macro_events.json; 非农/CPI 程序生成。"""
+    try:
+        with open(os.path.join(DATA_DIR, "macro_events.json"), encoding="utf-8") as fh:
+            events = json.load(fh).get("events", [])
+    except (OSError, ValueError):
+        events = []
+    y, m = today.year, today.month
+    for k in range(-2, 15):
+        mm = (m - 1 + k) % 12 + 1
+        yy = y + (m - 1 + k) // 12
+        d = datetime.date(yy, mm, 1)
+        while d.weekday() != 4:
+            d += datetime.timedelta(days=1)
+        events.append({"name": "非农", "date": d.isoformat(), "type": "jobs",
+                       "note": "每月首个周五, 香港时间21:30(冬令)"})
+        events.append({"name": "美国CPI", "date": datetime.date(yy, mm, 11).isoformat(),
+                       "type": "cpi", "note": "每月11日记账, 实际日期为近似"})
+    seen, out = set(), []
+    for e in events:
+        try:
+            ed = datetime.date.fromisoformat(e["date"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (e["name"], e["date"]) in seen:
+            continue
+        seen.add((e["name"], e["date"]))
+        e["_d"] = ed
+        out.append(e)
+    return sorted(out, key=lambda e: e["_d"])
+
+
+def macro_event_line(events, today):
+    """未来2个事件倒计时; T-1 预警, 当日注记。"""
+    warn = {"jobs": "明晚21:30非农公布", "cpi": "明晚21:30美国CPI(日期近似)",
+            "fed": "FOMC决议(香港时间次日凌晨)", "earnings": "美团财报窗口(预估待公告校准)"}
+    parts = []
+    for e in [e for e in events if e["_d"] >= today][:2]:
+        dd = (e["_d"] - today).days
+        tag = "今日" if dd == 0 else ("明天" if dd == 1 else f"T-{dd}")
+        s = f"{e['name']} {e['_d'].isoformat()[5:]}({tag})"
+        if dd <= 1:
+            s += f" ⚠{warn.get(e['type'], '事件')}，事件前控仓口径"
+        parts.append(s)
+    return "事件: " + " | ".join(parts) if parts else None
 
 
 def ema_series(vals, n):
