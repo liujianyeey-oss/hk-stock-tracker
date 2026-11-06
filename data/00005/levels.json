@@ -1,0 +1,89 @@
+{
+  "updated": "2026-11-06",
+  "code": "00005",
+  "name": "汇丰控股",
+  "auto_generated": true,
+  "benchmark": "hkHSI",
+  "chip_bin_width": 1.0,
+  "intraday_bin_width": 0.5,
+  "note": "自动生成草稿：关键位来自筹码峰与52周结构，未人工校准，不作为交易触发。 playbook 经 2016-2026 回测校准(2026-11-06)。",
+  "resistance": [
+    {
+      "price": 168.13,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 148.5,
+      "note": "自动筹码/价格峰草稿"
+    }
+  ],
+  "support": [
+    {
+      "price": 94.5,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 79.5,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 65.5,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 56.5,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 42.5,
+      "note": "自动筹码/价格谷草稿"
+    }
+  ],
+  "thresholds": {
+    "vol_active": 0.8,
+    "spike_x": 2.0,
+    "lull_x": 0.5
+  },
+  "playbook": [
+    {
+      "id": "meta_backtest",
+      "group": "meta",
+      "action": "observe",
+      "when": {
+        "close_above": 0.01
+      },
+      "backtest_validated": true,
+      "stance": "本playbook基于该标的2016-2026回测(reports/backtest-deep-multi-2026-11-06.md)，样本与局限见报告"
+    },
+    {
+      "id": "s3_vol",
+      "group": "momentum",
+      "action": "observe",
+      "when": {
+        "turnover_above": 0.16
+      },
+      "backtest_validated": true,
+      "stance": "放量异动(≈2x常态0.16%)：收涨→回测净+3.06pp/胜55%(42次)可顺向小仓；收跌→恐慌修复净+1.33pp/胜62%，不追空"
+    },
+    {
+      "id": "s1_warn",
+      "group": "left_side",
+      "action": "observe",
+      "when": {
+        "close_below": 94.5
+      },
+      "backtest_validated": true,
+      "stance": "进入深套区：S1回测边际为负，勿以深套为由抄底"
+    }
+  ],
+  "default_stance": "观望：无规则触发；汇丰有效信号仅放量异动类，等待换手>0.16%的放量日。",
+  "reference": {
+    "w52_low": 99.125,
+    "w52_high": 168.132,
+    "avg_cost": 85.60622817111901
+  },
+  "event_risk": {
+    "sensitivity": 1.15,
+    "policy": "事件前减半(非农/FOMC次日波动约1.15x)"
+  }
+}

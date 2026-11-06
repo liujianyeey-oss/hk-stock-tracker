@@ -218,7 +218,7 @@ class KlineRows(list):
     pass
 
 
-def fetch_kline(today, code=DEFAULT_CODE):
+def fetch_kline(today, code=DEFAULT_CODE, adjust="qfq"):
     rows = {}
     provenance = []
     symbol = tencent_symbol(code)
@@ -233,12 +233,12 @@ def fetch_kline(today, code=DEFAULT_CODE):
         start = window_end + datetime.timedelta(days=1)
     for a, b in windows:
         url = ("https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get?"
-               f"param={symbol},day,{a},{b},800,qfq")
+               f"param={symbol},day,{a},{b},800,{adjust}")
         raw = http_get(url)
         k = json.loads(raw)["data"][symbol]
-        selected = "day" if k.get("day") else "qfqday" if k.get("qfqday") else None
-        provenance.append({"start": a, "end": b, "requested_adjustment": "qfq",
-                           "returned_fields": [key for key in ("day", "qfqday") if key in k],
+        selected = "day" if k.get("day") else "qfqday" if k.get("qfqday") else "hfqday" if k.get("hfqday") else None
+        provenance.append({"start": a, "end": b, "requested_adjustment": adjust,
+                           "returned_fields": [key for key in ("day", "qfqday", "hfqday") if key in k],
                            "selected_field": selected, "response_text_sha256": hashlib.sha256(raw.encode('utf-8')).hexdigest()})
         for rec in k.get(selected, []) if selected else []:
             if rec and len(rec) >= 6 and a <= rec[0] <= b:
@@ -505,24 +505,28 @@ def rule_match(when, close, turnover):
 
 
 def evaluate_playbook(levels, price, turnover, rr, *, intraday, t_est):
-    """只返回满足数据质量和已标记入场风险条件的规则。"""
+    """只返回满足数据质量和已标记入场风险条件的规则。
+    自动草稿标的中，backtest_validated 规则照常评估（关键位未校准不影响回测规则）。"""
     fired, suppressed = [], []
     if not levels.get("auto_generated"):
-        for rule in levels["playbook"]:
-            when = rule["when"]
-            if not rule_match(when, price, turnover):
-                continue
-            reason = None
-            if intraday and any(key.startswith("close_") for key in when):
-                reason = "收盘条件盘中未确认"
-            elif t_est and any(key.startswith("turnover_") for key in when):
-                reason = "换手率为估算值"
-            elif rule.get("action") == "entry" and (rr is None or rr[2] < 1):
-                reason = "赔率不足1" if rr is not None else "缺少可计算赔率的支撑或阻力"
-            if reason:
-                suppressed.append(f"{rule['id']}：{reason}")
-            else:
-                fired.append(rule)
+        rules = levels["playbook"]
+    else:
+        rules = [r for r in levels["playbook"] if r.get("backtest_validated")]
+    for rule in rules:
+        when = rule["when"]
+        if not rule_match(when, price, turnover):
+            continue
+        reason = None
+        if intraday and any(key.startswith("close_") for key in when):
+            reason = "收盘条件盘中未确认"
+        elif t_est and any(key.startswith("turnover_") for key in when):
+            reason = "换手率为估算值"
+        elif rule.get("action") == "entry" and (rr is None or rr[2] < 1):
+            reason = "赔率不足1" if rr is not None else "缺少可计算赔率的支撑或阻力"
+        if reason:
+            suppressed.append(f"{rule['id']}：{reason}")
+        else:
+            fired.append(rule)
     return fired, suppressed
 
 
@@ -1066,8 +1070,10 @@ def macro_event_line(events, today):
         dd = (e["_d"] - today).days
         tag = "今日" if dd == 0 else ("明天" if dd == 1 else f"T-{dd}")
         s = f"{e['name']} {e['_d'].isoformat()[5:]}({tag})"
-        if dd <= 1:
+        if dd == 1:
             s += f" ⚠{warn.get(e['type'], '事件')}，事件前控仓口径"
+        elif dd == 0:
+            s += f" ⚠今日：{warn.get(e['type'], '事件').replace('明晚', '今晚')}，按控仓口径执行"
         parts.append(s)
     return "事件: " + " | ".join(parts) if parts else None
 

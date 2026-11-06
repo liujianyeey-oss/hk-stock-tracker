@@ -1,0 +1,91 @@
+{
+  "updated": "2026-11-06",
+  "code": "00388",
+  "name": "香港交易所",
+  "auto_generated": true,
+  "benchmark": "hkHSI",
+  "chip_bin_width": 2.0,
+  "intraday_bin_width": 1.0,
+  "note": "自动生成草稿：关键位来自筹码峰与52周结构，未人工校准，不作为交易触发。 playbook 经 2016-2026 回测校准(2026-11-06)。",
+  "resistance": [
+    {
+      "price": 399.0,
+      "note": "自动筹码/价格峰草稿"
+    },
+    {
+      "price": 413.0,
+      "note": "自动筹码/价格峰草稿"
+    }
+  ],
+  "support": [
+    {
+      "price": 375.0,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 317.0,
+      "note": "自动筹码/价格谷草稿"
+    },
+    {
+      "price": 279.0,
+      "note": "自动筹码/价格谷草稿"
+    }
+  ],
+  "thresholds": {
+    "vol_active": 0.8,
+    "spike_x": 2.0,
+    "lull_x": 0.5
+  },
+  "playbook": [
+    {
+      "id": "meta_backtest",
+      "group": "meta",
+      "action": "observe",
+      "when": {
+        "close_above": 0.01
+      },
+      "backtest_validated": true,
+      "stance": "本playbook基于该标的2016-2026回测(reports/backtest-deep-multi-2026-11-06.md)，样本与局限见报告"
+    },
+    {
+      "id": "s1_rebound",
+      "group": "left_side",
+      "action": "entry",
+      "when": {
+        "close_below": 375
+      },
+      "backtest_validated": true,
+      "stance": "深套区(获利盘<10%量级)：S1回测净+5.83pp/胜70%(23次)，可分批左侧博反弹"
+    },
+    {
+      "id": "s3_up",
+      "group": "momentum",
+      "action": "entry",
+      "when": {
+        "turnover_above": 0.54
+      },
+      "backtest_validated": true,
+      "stance": "放量上攻(≈2x常态0.54%)：S3涨回测净+2.63pp/胜59%(72次)；成交量beta标的，放量即利好，顺向跟随"
+    },
+    {
+      "id": "s4_warn",
+      "group": "risk",
+      "action": "observe",
+      "when": {
+        "close_above": 0.01
+      },
+      "backtest_validated": true,
+      "stance": "注：沽空比例>25%后历史+20日全负(6次)，沽空节高企时视为风险警示"
+    }
+  ],
+  "default_stance": "观望：等深套反弹(close<375)或放量上攻(换手>0.54%)信号。",
+  "reference": {
+    "w52_low": 352.57,
+    "w52_high": 430.85,
+    "avg_cost": 371.83707856159344
+  },
+  "event_risk": {
+    "sensitivity": 1.25,
+    "policy": "事件前减半+事件次日止损放宽1.2x(与美团同口径)"
+  }
+}

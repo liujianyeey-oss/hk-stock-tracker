@@ -13,10 +13,10 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if __package__:
     from . import hk_calendar
-    from .tracker import UA, atomic_write, fetch_kline, fetch_short_selling, fill_missing_turnover, validate_kline, chip_metrics
+    from .tracker import UA, atomic_write, choose_bin_width, fetch_kline, fetch_short_selling, fill_missing_turnover, validate_kline, chip_metrics, DEFAULT_CODE, normalize_hk_code
 else:
     import hk_calendar
-    from tracker import UA, atomic_write, fetch_kline, fetch_short_selling, fill_missing_turnover, validate_kline, chip_metrics
+    from tracker import UA, atomic_write, choose_bin_width, fetch_kline, fetch_short_selling, fill_missing_turnover, validate_kline, chip_metrics, DEFAULT_CODE, normalize_hk_code
 
 _source_dir = os.path.dirname(os.path.abspath(__file__))
 if os.path.basename(_source_dir) == "hk_stock_tracker":
@@ -28,13 +28,13 @@ BASE = os.path.abspath(os.path.expanduser(os.environ.get("HK_TRACKER_HOME", _def
 HORIZONS = (5, 10, 20)
 
 
-def fetch_southbound_all():
+def fetch_southbound_all(code=DEFAULT_CODE):
     out, page = {}, 1
     while True:
         url = ("https://datacenter-web.eastmoney.com/api/data/v1/get?"
                f"sortColumns=HOLD_DATE&sortTypes=-1&pageSize=500&pageNumber={page}&"
                "reportName=RPT_MUTUAL_STOCK_HOLDRANKS&columns=ALL&"
-               "filter=(SECURITY_CODE%3D%2203690%22)")
+               f"filter=(SECURITY_CODE%3D%22{code}%22)")
         req = urllib.request.Request(url, headers={**UA, "Referer": "https://data.eastmoney.com/"})
         with urllib.request.urlopen(req, timeout=30) as r:
             d = json.load(r)
@@ -169,7 +169,7 @@ def completed_kline(data, now):
     return list(data)
 
 
-def main(end_date=None, output=None, overwrite=False):
+def main(end_date=None, output=None, overwrite=False, code=DEFAULT_CODE):
     now = datetime.datetime.now(ZoneInfo("Asia/Hong_Kong"))
     today = now.date()
     end_date = end_date or today.isoformat()
@@ -180,24 +180,25 @@ def main(end_date=None, output=None, overwrite=False):
     if requested < datetime.date(2023, 1, 1) or requested > today:
         raise ValueError("--end 必须在 2023-01-01 至今天之间")
     print("拉取日K...")
-    data = fetch_kline(end_date)
+    data = fetch_kline(end_date, code)
     completed = completed_kline(data, now)
     if len(completed) != len(data):
         print("今日K线尚未收盘，已排除。")
     data = completed
     validate_kline(data, minimum=21)
     estimated_dates = fill_missing_turnover(data)
-    print(f"{len(data)} 交易日 {data[0]['date']}~{data[-1]['date']}; 滚动筹码重算...")
-    profits, peaks = rolling_chip_metrics(data)
+    print(f"hk{code} {len(data)} 交易日 {data[0]['date']}~{data[-1]['date']}; 滚动筹码重算...")
+    width = 0.5 if code == DEFAULT_CODE else choose_bin_width(data[-1]["close"])
+    profits, peaks = rolling_chip_metrics(data, width)
 
     try:
-        shorts = fetch_short_selling()
+        shorts = fetch_short_selling(code)
     except Exception as exc:
         print(f"沽空数据不可用：{exc}", file=sys.stderr)
         shorts = []
     ratio_map = {x["date"]: x["ratio"] for x in shorts}
     try:
-        south_map = fetch_southbound_all()
+        south_map = fetch_southbound_all(code)
     except Exception as exc:
         print(f"南向数据不可用：{exc}", file=sys.stderr)
         south_map = {}
@@ -222,7 +223,7 @@ def main(end_date=None, output=None, overwrite=False):
              "S5b": "S5b 南向连续5日减持(对照)"}
     lines = []
     A = lines.append
-    A(f"# 美团-W 信号回测 {data[0]['date']} ~ {data[-1]['date']}")
+    A(f"# hk{code} 信号回测 {data[0]['date']} ~ {data[-1]['date']} (分箱{width:g})")
     A("")
     A(f"说明：{n} 个交易日、单标的，统计功效有限；连续触发按首次去重；"
       "收益自信号日收盘起算，未扣交易成本。南向和沽空采用前一交易日数据，"
@@ -290,13 +291,14 @@ def main(end_date=None, output=None, overwrite=False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="美团历史信号研究（仅供参考）")
+    parser = argparse.ArgumentParser(description="港股历史信号研究（仅供参考）")
     parser.add_argument("--end", help="截止日期 YYYY-MM-DD，默认今天")
     parser.add_argument("--output", help="报告文件路径，默认 reports/backtest-<截止日期>.md")
     parser.add_argument("--overwrite", action="store_true", help="允许覆盖已有报告")
+    parser.add_argument("--code", "-c", default=DEFAULT_CODE, help="港股代码，默认 03690")
     args = parser.parse_args()
     try:
-        sys.exit(main(args.end, args.output, args.overwrite))
+        sys.exit(main(args.end, args.output, args.overwrite, normalize_hk_code(args.code)))
     except (ValueError, OSError, KeyError, IndexError) as exc:
         print(f"回测失败：{exc}", file=sys.stderr)
         sys.exit(1)

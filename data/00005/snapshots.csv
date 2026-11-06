@@ -1,0 +1,2 @@
+date,status,close,pct_chg,turnover,t20,t60,profit,avg_cost,p5,p95,conc90,p15,p85,conc70,peak1,peak1_share,short_amount,short_ratio,south_hold,south_chg,events,stance
+2026-11-06,收盘,137.50,-2.55,0.070,0.080,0.068,84.5,85.61,37.52,156.69,61.37,42.68,137.59,52.65,56.50,11.87,,,15.27,+32,-,meta_backtest

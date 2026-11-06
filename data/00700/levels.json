@@ -1,12 +1,12 @@
 {
-  "updated": "2026-10-28",
+  "updated": "2026-11-06",
   "code": "00700",
   "name": "腾讯控股",
   "auto_generated": true,
   "benchmark": "hkHSI",
   "chip_bin_width": 2,
   "intraday_bin_width": 1.0,
-  "note": "自动生成草稿：关键位来自筹码峰与52周结构，未人工校准，不作为交易触发。",
+  "note": "自动生成草稿：关键位来自筹码峰与52周结构，未人工校准，不作为交易触发。 playbook 经 2016-2026 回测校准(2026-11-06)。",
   "resistance": [
     {
       "price": 425.0,
@@ -44,11 +44,46 @@
     "spike_x": 2.0,
     "lull_x": 0.5
   },
-  "playbook": [],
-  "default_stance": "自动草稿：关键位未人工校准，仅观察，不给交易建议。",
+  "playbook": [
+    {
+      "id": "meta_backtest",
+      "group": "meta",
+      "action": "observe",
+      "when": {
+        "close_above": 0.01
+      },
+      "backtest_validated": true,
+      "stance": "本playbook基于该标的2016-2026回测(reports/backtest-deep-multi-2026-11-06.md)，样本与局限见报告"
+    },
+    {
+      "id": "s5a_dip",
+      "group": "left_side",
+      "action": "entry",
+      "when": {
+        "close_below": 378
+      },
+      "backtest_validated": true,
+      "stance": "回落至支撑区且若南向连续5日净增持：S5a回测净+3.41pp/胜69%(13次)，内资抄底在腾讯有效，可左侧分批"
+    },
+    {
+      "id": "s5b_avoid",
+      "group": "risk",
+      "action": "reduce",
+      "when": {
+        "close_above": 0.01
+      },
+      "backtest_validated": true,
+      "stance": "注：南向连续5日净减持=回避信号(回测净-2.83pp/胜30%)；触发'南向撤退'事件时执行减仓"
+    }
+  ],
+  "default_stance": "观望：腾讯核心信号是南向资金方向；等回落378下方+南向连增的共振，或回避南向连减期。",
   "reference": {
     "w52_low": 378.0,
     "w52_high": 658.7,
     "avg_cost": 461.5582861471288
+  },
+  "event_risk": {
+    "sensitivity": 1.14,
+    "policy": "事件前减半(非农/FOMC次日波动约1.14x)"
   }
 }
