@@ -933,21 +933,26 @@ def fetch_index(code="hkHSTECH"):
 def fetch_short_selling(code=DEFAULT_CODE):
     """ETNet 个股沽空历史(约40+交易日)。2026-10 页面改版：HTML 表格保留
     (当日临时数据单元格带红*前缀, 需剥离), 另有 drawComboChart2 JS 数组兜底。
-    同一 URL: quote_shortsell.php?code=3690, 数据说明见 docs/JOURNAL.md。"""
+    同一 URL: quote_shortsell.php?code=3690, 数据说明见 docs/JOURNAL.md。
+    2026-11-09：ETNet 对裸 UA 请求挂起（软封锁），需完整浏览器头+Referer；
+    仍失败时回退港交所官方当日沽空文件 ASHTMAIN（仅当日一个数据点）。"""
     import re
     url = ("https://www.etnet.com.hk/www/eng/stocks/realtime/"
            f"quote_shortsell.php?code={etnet_code(code)}")
+    hdrs = {**UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-HK,zh;q=0.9,en;q=0.8",
+            "Referer": "https://www.etnet.com.hk/"}
     html = None
     for _ in range(2):
         try:
-            req = urllib.request.Request(url, headers=UA)
+            req = urllib.request.Request(url, headers=hdrs)
             with urllib.request.urlopen(req, timeout=60) as r:
                 html = r.read().decode("utf-8", errors="replace")
             break
         except Exception:
             continue
     if html is None:
-        return []
+        return _fetch_short_selling_hkex(code)
 
     def num(s):
         s = s.lstrip("*").replace(",", "").rstrip("%")
@@ -1000,6 +1005,41 @@ def fetch_short_selling(code=DEFAULT_CODE):
                     "amount": volume * close * 1e6, "ratio": ratio,
                     "amount_estimated": True})
     return unique_sorted(out)
+
+
+def _fetch_short_selling_hkex(code):
+    """港交所官方当日沽空文件（ETNet 失败兜底，仅当日一个数据点）。
+    ASHTMAIN.HTM：主板沽空成交，行格式 `  3690  MEITUAN-W  11,349,500  869,383,130`。
+    比例需配合当日总成交额自算（K线 amount 或 均价×量 估算）。"""
+    import re
+    url = "https://www.hkex.com.hk/eng/stat/smstat/ssturnover/ncms/ASHTMAIN.HTM"
+    try:
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            html = r.read().decode("utf-8", errors="replace")
+    except Exception:
+        return []
+    text = re.sub(r"<[^>]+>", " ", html)
+    pat = re.compile(rf"^\s*{int(code)}\s+\S.*?([\d,]+)\s+([\d,]+)\s*$", re.M)
+    m = pat.search(text)
+    if not m:
+        return []
+    sh, amt = float(m.group(1).replace(",", "")), float(m.group(2).replace(",", ""))
+    if sh <= 0 or amt <= 0:
+        return []
+    # 比例自算：分钟流末根 bar 的累计成交额=当日总成交（与官方口径一致）
+    ratio = None
+    try:
+        bars = fetch_minute(code)
+        if bars and bars[-1]["cumamt"] > 0:
+            ratio = amt / bars[-1]["cumamt"] * 100.0
+    except Exception:
+        pass
+    if ratio is None:
+        return []
+    today = datetime.date.today().isoformat()
+    return [{"date": today, "shares": sh, "amount": amt, "ratio": ratio,
+             "source": "hkex"}]
 
 
 # TODO: 港交所股票期权日报(PCR/行权价持仓)——dmstat/dayrpt 下 stopt/dqe/d 等命名变体
