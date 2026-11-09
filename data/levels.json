@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-05",
+  "updated": "2026-11-09",
   "note": "美团-W(hk03690) 战略地图：关键价位 + 规则引擎 playbook。结构变化后由后续分析更新。 11-05:78.3主峰放量攻克,阻力转支撑。",
   "resistance": [
     {
@@ -47,6 +47,18 @@
     "lull_x": 0.5
   },
   "playbook": [
+    {
+      "id": "rs_override",
+      "group": "risk",
+      "action": "reduce",
+      "intraday_only": true,
+      "when": {
+        "close_below": 0.01
+      },
+      "backtest_validated": true,
+      "evidence": "reports/backtest-override-2026-11-09.md",
+      "stance": "rs_override(盘中带量破位减半)：盘中跌破防线>0.5%且未快速收回、投影量>1.5x20日均→立即市价减半仓，剩余半仓仍按收盘裁决；无量破位不触发。回测(美团带量组)：期望+4.0pp/胜率78%；代价：25%触发日踏空反抽、最差-1.13pp。"
+    },
     {
       "id": "rs_fail_783",
       "group": "right_side",
@@ -96,5 +108,11 @@
   "event_risk": {
     "sensitivity": 1.23,
     "policy": "事件前减半+事件次日止损放宽1.2x"
+  },
+  "rs_override": {
+    "enabled": true,
+    "break_buffer": 0.005,
+    "vol_x": 1.5,
+    "note": "盘中规则参数；判定在 intraday，日线引擎跳过(intraday_only)"
   }
 }

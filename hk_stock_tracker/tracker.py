@@ -538,6 +538,7 @@ def evaluate_playbook(levels, price, turnover, rr, *, intraday, t_est):
         rules = levels["playbook"]
     else:
         rules = [r for r in levels["playbook"] if r.get("backtest_validated")]
+    rules = [r for r in rules if not r.get("intraday_only")]  # 盘中规则由 intraday 判定
     for rule in rules:
         when = rule["when"]
         if not rule_match(when, price, turnover):
@@ -1514,6 +1515,23 @@ def _intraday(code):
         lv_lines.append(s)
 
     sigs = []
+    rs_cfg = levels.get("rs_override", {})
+    if rs_cfg.get("enabled", True) and not levels.get("auto_generated"):
+        buf = rs_cfg.get("break_buffer", 0.005)
+        vx = rs_cfg.get("vol_x", 1.5)
+        for lv in levels["support"]:
+            p = lv["price"]
+            if price < p * (1 - buf) and rvol > vx:
+                sigs.append(
+                    f"⚠ rs_override 触发(带量破位减半)：现价{price:.2f} 跌破防线 {p}"
+                    f"({lv['note']}) {(price / p - 1) * 100:+.1f}%，投影量比 {rvol:.1f}x>{vx}"
+                    f" → 立即市价减半仓，剩余半仓收盘裁决"
+                    f"（回测+4.0pp/胜78%；代价25%踏空反抽、最差-1.13pp）")
+            elif p * (1 - buf) <= price <= p * 1.01:
+                sigs.append(
+                    f"rs_override 预警：现价{price:.2f} 距防线 {p} 仅 {(price / p - 1) * 100:+.1f}%"
+                    f"(1%内)；当前投影量比 {rvol:.1f}x"
+                    + ("——带量破位即触发减半" if rvol > vx else "——量不足(需>1.5x)，破位不触发"))
     if hm < "1000":
         sigs.append("时间规则：9:30-10:00 不定方向，不重仓")
     if hm >= "1400" and sum(vols[-30:]) / 30 < 0.5 * tot_v / len(vols):
@@ -1588,7 +1606,8 @@ def _intraday(code):
     report = "\n".join(L)
     print(report)
 
-    if len(sigs) > 1 or "做T" in report or "ORB：10" in report or "背离" in report:
+    if len(sigs) > 1 or "做T" in report or "ORB：10" in report or "背离" in report \
+            or "rs_override" in report:
         path = os.path.join(data_dir, "intraday_log.csv")
         os.makedirs(data_dir, exist_ok=True)
         new = not os.path.exists(path)
