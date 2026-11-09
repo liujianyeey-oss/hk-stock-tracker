@@ -262,6 +262,32 @@ def fetch_kline(today, code=DEFAULT_CODE, adjust="qfq"):
 
 
 def fetch_quote(code=DEFAULT_CODE):
+    """实时行情：东财为主（腾讯港股免费报价延迟约15分钟，2026-11-09 实测），
+    东财失败回退腾讯。返回字段口径不变。"""
+    try:
+        return _fetch_quote_eastmoney(code)
+    except Exception:
+        return _fetch_quote_tencent(code)
+
+
+def _fetch_quote_eastmoney(code):
+    url = "https://push2.eastmoney.com/api/qt/stock/get"
+    params = {"secid": f"116.{code}",
+              "fields": "f43,f44,f45,f57,f58,f59,f60,f86,f170,f174,f175",
+              "ut": "fa5fd1943c7b386f172d6893dbfba10b"}
+    req = urllib.request.Request(
+        url + "?" + urllib.parse.urlencode(params),
+        headers={**UA, "Referer": "https://quote.eastmoney.com/"})
+    d = json.loads(urllib.request.urlopen(req, timeout=10).read())["data"]
+    scale = 10 ** int(d["f59"])
+    return {"name": d["f58"] or code, "price": d["f43"] / scale,
+            "prev_close": d["f60"] / scale, "pct": d["f170"] / 100.0,
+            "high": d["f44"] / scale, "low": d["f45"] / scale,
+            "time": datetime.datetime.fromtimestamp(d["f86"]),
+            "w52_high": d["f174"] / scale, "w52_low": d["f175"] / scale}
+
+
+def _fetch_quote_tencent(code):
     txt = http_get(f"https://qt.gtimg.cn/q={tencent_symbol(code)}", encoding="gbk")
     f = txt.split("~")
     q = {"name": f[1].strip() or code, "price": float(f[3]),
