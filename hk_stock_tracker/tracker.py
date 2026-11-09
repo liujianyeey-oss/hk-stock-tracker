@@ -727,6 +727,28 @@ def _daily(code):
     else:
         south_txt.append("- 南向数据获取失败(东财)，本节跳过")
 
+    top10_txt = []
+    try:
+        top10 = fetch_southbound_top10(code)
+    except Exception:
+        top10 = None
+        top10_txt.append("- 南向十大成交获取失败(东财)，本节跳过")
+    if top10:
+        rk = "/".join(f"{'沪' if k == '002' else '深'}#{v}" for k, v in sorted(top10["ranks"].items()))
+        top10_txt.append(
+            f"- 上榜({top10['date']} {rk})：净买{top10['net'] / 1e8:+.2f}亿"
+            f"(买{top10['buy'] / 1e8:.2f}/卖{top10['sell'] / 1e8:.2f}, 人民币, 当晚更新)")
+        if top10["date"] == last["date"]:
+            save_south_top10(data_dir, top10)
+        if top10["net"] < -2e8:
+            events.append(f"南向大额净卖出 {top10['net'] / 1e8:.2f}亿(十大成交{top10['date']})")
+        elif top10["net"] > 2e8:
+            events.append(f"南向大额净买入 +{top10['net'] / 1e8:.2f}亿(十大成交{top10['date']})")
+    elif not top10_txt:
+        top10_txt.append("- 当日未上榜(十大成交之外)")
+    if now.weekday() == 4:
+        events.append("CCASS周度跟踪日：托管仓位变动手动查询(见 ccass 子命令)")
+
     tk = tech_indicators(data)
 
     try:
@@ -751,6 +773,9 @@ def _daily(code):
         A(s)
     A("## 南向资金(港股通)")
     for s in south_txt:
+        A(s)
+    A("## 南向当日净买卖(十大成交)")
+    for s in top10_txt:
         A(s)
     A("## 技术状态")
     A(f"- 均线 MA5 {tk['ma5']:.2f}/MA10 {tk['ma10']:.2f}/MA20 {tk['ma20']:.2f}"
@@ -1104,6 +1129,95 @@ def macro_event_line(events, today):
     return "事件: " + " | ".join(parts) if parts else None
 
 
+def fetch_southbound_top10(code=DEFAULT_CODE):
+    """东财港股通十大成交(沪002+深004合并, RPT_MUTUAL_TOP10DEAL)。
+    仅当日上榜有数据; 金额单位为人民币元; 通常交易日晚间更新。未上榜返回 None。"""
+    found = []
+    for mt in ("002", "004"):
+        url = ("https://datacenter-web.eastmoney.com/api/data/v1/get?"
+               "reportName=RPT_MUTUAL_TOP10DEAL&columns=ALL&pageNumber=1&pageSize=10&"
+               "sortColumns=TRADE_DATE,RANK&sortTypes=-1,1&source=WEB&client=WEB&"
+               f"filter=(MUTUAL_TYPE%3D%22{mt}%22)")
+        req = urllib.request.Request(url, headers={**UA, "Referer": "https://data.eastmoney.com/"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            d = json.load(r)
+        for x in (d.get("result") or {}).get("data") or []:
+            if x.get("SECURITY_CODE") == code:
+                found.append(x)
+    if not found:
+        return None
+    return {"date": found[0]["TRADE_DATE"][:10],
+            "net": sum(x.get("NET_BUY_AMT") or 0 for x in found),
+            "buy": sum(x.get("BUY_AMT") or 0 for x in found),
+            "sell": sum(x.get("SELL_AMT") or 0 for x in found),
+            "ranks": {x["MUTUAL_TYPE"]: x["RANK"] for x in found},
+            "close": found[0].get("CLOSE_PRICE")}
+
+
+def save_south_top10(data_dir, top10):
+    path = os.path.join(data_dir, "south_top10.csv")
+    fields = ["date", "rank_h", "rank_s", "buy", "sell", "net", "close"]
+    rec = {"date": top10["date"], "rank_h": top10["ranks"].get("002", ""),
+           "rank_s": top10["ranks"].get("004", ""), "buy": f"{top10['buy'] / 1e8:.2f}",
+           "sell": f"{top10['sell'] / 1e8:.2f}", "net": f"{top10['net'] / 1e8:+.2f}",
+           "close": top10.get("close") or ""}
+    rows = []
+    if os.path.exists(path) and not os.path.islink(path):
+        with open(path, newline="", encoding="utf-8") as fh:
+            rows = [r for r in csv.DictReader(fh) if r.get("date") != rec["date"]]
+    rows.append(rec)
+    rows.sort(key=lambda r: r["date"])
+
+    def write(fh):
+        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    atomic_write(path, write, newline="")
+
+
+def ccass(code=DEFAULT_CODE):
+    """CCASS 托管周度跟踪(手动模式)。
+    披露易 ToS 2.3 明确禁止程序化抓取(2026-11-09 技术验证 POST 可达但弃用)，
+    故本命令输出手动查询指引; 若 data/ccass_<code>.csv 有手工录入的历史,
+    自动算周度变动榜并标记变动超 0.3pp 总股本的参与者。"""
+    code = normalize_hk_code(code)
+    data_dir, _ = stock_dirs(code)
+    print("== CCASS 托管仓位周度跟踪(手动模式) ==")
+    print("披露易使用条款 2.3 禁止脚本化接入, 本工具不自动抓取。手动步骤:")
+    print("  1. 打开 https://www3.hkexnews.hk/sdw/search/searchsdw_c.aspx")
+    print("  2. 持股日期选最近周五, 股份代号输入", code)
+    print(f"  3. 把前15大参与者+中国结算(港股通席位)追加到 data/ccass_{code}.csv, 列:")
+    print("     date,participant,shares,pct  (pct=占已发行股份%)")
+    path = os.path.join(data_dir, f"ccass_{code}.csv")
+    if not os.path.exists(path):
+        print(f"\n暂无历史({os.path.relpath(path, BASE)}), 录入两周后此处自动产出变动榜。")
+        return 0
+    with open(path, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    dates = sorted({r["date"] for r in rows})
+    if len(dates) < 2:
+        print("\n仅一周数据, 变动榜需至少两周。")
+        return 0
+    cur, prev = dates[-1], dates[-2]
+    by = {}
+    for r in rows:
+        if r["date"] in (cur, prev):
+            try:
+                by.setdefault(r["participant"], {})[r["date"]] = float(r["pct"])
+            except (KeyError, TypeError, ValueError):
+                continue
+    moves = []
+    for name, d in by.items():
+        if cur in d and prev in d:
+            moves.append((name, d[prev], d[cur], d[cur] - d[prev]))
+    moves.sort(key=lambda x: -abs(x[3]))
+    print(f"\n托管变动榜 {prev} → {cur} (按|变动|排序, 单位pp):")
+    for name, p0, p1, dp in moves[:15]:
+        flag = " ⚠>0.3pp" if abs(dp) > 0.3 else ""
+        print(f"  {name[:40]:<40} {p0:6.2f}% → {p1:6.2f}%  {dp:+.2f}{flag}")
+    return 0
+
+
 def ema_series(vals, n):
     k = 2.0 / (n + 1)
     out = [vals[0]]
@@ -1354,6 +1468,40 @@ def _intraday(code):
 
     excess = quote["pct"] - idx["pct"] if idx_ok else None
 
+    # 分钟级主买/主卖(uptick 方向推断): 分钟收盘>前分钟=主动买入, < =主动卖出, = 对半分
+    amts, pa_ = [], 0.0
+    for r in mins:
+        amts.append(r["cumamt"] - pa_)
+        pa_ = r["cumamt"]
+    buy_amt = sell_amt = 0.0
+    net_series = [0.0] * len(mins)
+    for i in range(1, len(mins)):
+        a = amts[i]
+        if prices[i] > prices[i - 1]:
+            buy_amt += a
+            net_series[i] = a
+        elif prices[i] < prices[i - 1]:
+            sell_amt += a
+            net_series[i] = -a
+        else:
+            buy_amt += a / 2
+            sell_amt += a / 2
+    net_act = buy_amt - sell_amt
+    buy_pct = buy_amt / (buy_amt + sell_amt) * 100 if buy_amt + sell_amt else 50.0
+    k30 = min(30, len(mins) - 1)
+    net30 = sum(net_series[-k30:]) if k30 else 0.0
+    net_prev30 = sum(net_series[-2 * k30:-k30]) if len(mins) > 2 * k30 else None
+    if net_prev30 is None:
+        trend30 = ""
+    elif net30 > 0 and net30 > abs(net_prev30):
+        trend30 = "，较上前30分钟放大流入"
+    elif net30 > 0:
+        trend30 = "，流入收敛"
+    elif net30 < 0 and abs(net30) > abs(net_prev30):
+        trend30 = "，流出加速"
+    else:
+        trend30 = "，流出收敛"
+
     lv_lines = []
     for lv in levels["resistance"] + levels["support"]:
         p = lv["price"]
@@ -1394,6 +1542,12 @@ def _intraday(code):
         sigs.append(f"ORB：10:00区间放量{brk_txt}；3根5min内回落区间内视为假突破")
     if excess is not None and abs(excess) > 1:
         sigs.append(f"背离：相对基准指数超额 {excess:+.2f}%，个股独立行情，注意个股消息")
+    if buy_pct < 40 and quote["pct"] < 0:
+        sigs.append(f"主动卖压主导：主买占比{buy_pct:.0f}%<40%且价跌(uptick方向推断)")
+    elif buy_pct > 60 and quote["pct"] > 0:
+        sigs.append(f"主动买压主导：主买占比{buy_pct:.0f}%>60%且价涨(uptick方向推断)")
+    elif buy_pct < 40 and quote["pct"] > 0:
+        sigs.append(f"价涨但主买占比仅{buy_pct:.0f}%：被动承接反弹，质量存疑(uptick方向推断)")
     if not sigs:
         sigs.append("无显著日内信号：观察为主。")
 
@@ -1418,6 +1572,9 @@ def _intraday(code):
     A(f"- RVOL(投影口径): {rvol:.2f}  [已交易{len(mins)}分钟, 投影全日{proj / 1e4:.0f}万股"
       f" vs 20日均{avg20v / 1e4:.0f}万股]")
     A(f"- 首30分钟量占比 {share30:.1f}%(U型常态25-30%, 盘中天然偏高)")
+    A(f"- 主动方向(uptick估算): 主买{buy_amt / 1e8:.2f}亿/主卖{sell_amt / 1e8:.2f}亿"
+      f" 净{net_act / 1e8:+.2f}亿(主买占比{buy_pct:.0f}%) | 近30分钟净主动{net30 / 1e8:+.2f}亿{trend30}")
+    A(f"  注: 分钟bar uptick 方向推断估算，非真实逐笔成交")
     A(f"- 5min RSI(14): {rsi_t}")
     A(f"- ATR(14日) {atr:.2f}  今日振幅 {amp:.2f}({atr_x:.2f}x)  "
       f"估算剩余空间 {max(atr - amp, 0):.2f}")
@@ -1447,7 +1604,7 @@ def _intraday(code):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="港股筹码跟踪工具")
-    parser.add_argument("command", choices=("init", "daily", "intraday"))
+    parser.add_argument("command", choices=("init", "daily", "intraday", "ccass"))
     parser.add_argument("--code", "-c", default=DEFAULT_CODE,
                         help="港股代码，支持 700/0700/00700/700.HK，默认 03690")
     args = parser.parse_args()
@@ -1460,6 +1617,8 @@ if __name__ == "__main__":
             sys.exit(init_stock(code))
         if args.command == "daily":
             sys.exit(daily(code))
+        if args.command == "ccass":
+            sys.exit(ccass(code))
         sys.exit(intraday(code))
     except (ValueError, OSError, KeyError, IndexError, urllib.error.URLError) as exc:
         print(f"分析失败：{exc}", file=sys.stderr)
